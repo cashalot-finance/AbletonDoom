@@ -5,7 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Math DAW - Pro Edition</title>
     <style>
-        :root {
+        /* DOOM Theme (Default) */
+        :root, :root[data-theme="doom"] {
+            --bg-color: #1a0f0f;
+            --panel-bg: #2b1111;
+            --track-bg: #381515;
+            --accent: #ff3300;
+            --accent-hover: #ff6600;
+            --text: #ffcccc;
+            --grid-off: #4a1c1c;
+            --grid-on: #ff3300;
+            --grid-active: #fff;
+            --font: 'Inter', 'Segoe UI', sans-serif;
+        }
+
+        /* Synthwave Theme */
+        :root[data-theme="synthwave"] {
+            --bg-color: #0d0221;
+            --panel-bg: #261447;
+            --track-bg: #321b5c;
+            --accent: #ff007f;
+            --accent-hover: #00f0ff;
+            --text: #f5d0fe;
+            --grid-off: #462580;
+            --grid-on: #ff007f;
+            --grid-active: #00f0ff;
+        }
+
+        /* Standard Dark Theme */
+        :root[data-theme="dark"] {
             --bg-color: #121212;
             --panel-bg: #222;
             --track-bg: #2a2a2a;
@@ -15,7 +43,6 @@
             --grid-off: #333;
             --grid-on: #00d2ff;
             --grid-active: #fff;
-            --font: 'Inter', 'Segoe UI', sans-serif;
         }
 
         body {
@@ -28,8 +55,17 @@
         h1 { margin: 0; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
 
         .master-controls {
-            display: flex; gap: 20px; background: var(--panel-bg); padding: 15px 25px;
+            display: flex; gap: 15px; background: var(--panel-bg); padding: 15px 25px;
             border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .theme-selector {
+            display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: #aaa; margin-left: auto;
+        }
+        .theme-selector select {
+            background: var(--bg-color); color: var(--text); border: 1px solid var(--accent);
+            padding: 5px; border-radius: 4px; outline: none; cursor: pointer;
         }
 
         button.play-btn {
@@ -50,9 +86,9 @@
             padding: 10px; border-radius: 6px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
         }
 
-        .track-header { width: 220px; display: flex; flex-direction: column; gap: 8px; padding-right: 15px; border-right: 2px solid #444; }
+        .track-header { width: 340px; display: flex; flex-direction: column; gap: 8px; padding-right: 15px; border-right: 2px solid #444; flex-shrink: 0;}
         .track-title { font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-        .track-params { display: flex; gap: 10px; }
+        .track-params { display: flex; gap: 10px; flex-wrap: wrap;}
 
         .sequencer-grid { display: flex; gap: 6px; padding-left: 15px; flex-wrap: nowrap; overflow-x: auto; }
 
@@ -78,6 +114,10 @@
             </div>
             <div class="fx-section">
                 <div class="knob-group">
+                    <label>Distort</label>
+                    <input type="range" id="distMix" min="0" max="100" value="10">
+                </div>
+                <div class="knob-group">
                     <label>Delay</label>
                     <input type="range" id="delayMix" min="0" max="100" value="20">
                 </div>
@@ -85,6 +125,18 @@
                     <label>Reverb</label>
                     <input type="range" id="reverbMix" min="0" max="100" value="15">
                 </div>
+                <div class="knob-group">
+                    <label>Master Vol</label>
+                    <input type="range" id="masterVol" min="0" max="150" value="80">
+                </div>
+            </div>
+            <div class="theme-selector">
+                <label>Theme</label>
+                <select id="themeSelect">
+                    <option value="doom">Doom</option>
+                    <option value="synthwave">Synthwave</option>
+                    <option value="dark">Pro Dark</option>
+                </select>
             </div>
         </div>
     </div>
@@ -93,15 +145,55 @@
 
 <script>
     let audioCtx;
-    let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix;
+    let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix, distortionNode;
     
     // Параметры синтеза для каждого инструмента
     const synths = [
-        { name: 'KICK', p1Name: 'Pitch', p2Name: 'Decay', p1: 150, p2: 0.5, p1Min: 50, p1Max: 300, p2Min: 0.1, p2Max: 1.5 },
-        { name: 'SNARE', p1Name: 'Snap', p2Name: 'Decay', p1: 250, p2: 0.2, p1Min: 100, p1Max: 500, p2Min: 0.1, p2Max: 0.6 },
-        { name: 'HI-HAT', p1Name: 'Color', p2Name: 'Decay', p1: 10000, p2: 0.05, p1Min: 5000, p1Max: 15000, p2Min: 0.02, p2Max: 0.2 },
-        { name: 'BASS', p1Name: 'Cutoff', p2Name: 'Res', p1: 1000, p2: 10, p1Min: 100, p1Max: 3000, p2Min: 1, p2Max: 30 },
-        { name: 'FM LEAD', p1Name: 'Mod', p2Name: 'Freq', p1: 500, p2: 440, p1Min: 0, p1Max: 2000, p2Min: 100, p2Max: 880 }
+        {
+            name: 'KICK',
+            params: [
+                { name: 'Pitch', value: 150, min: 50, max: 300, step: 1 },
+                { name: 'Decay', value: 0.5, min: 0.1, max: 2.0, step: 0.01 },
+                { name: 'Sweep', value: 50, min: 10, max: 100, step: 1 },
+                { name: 'Click', value: 0.2, min: 0, max: 1, step: 0.01 }
+            ]
+        },
+        {
+            name: 'SNARE',
+            params: [
+                { name: 'Tone', value: 250, min: 100, max: 500, step: 1 },
+                { name: 'Decay', value: 0.2, min: 0.05, max: 0.6, step: 0.01 },
+                { name: 'Noise', value: 0.8, min: 0, max: 2, step: 0.01 },
+                { name: 'HPF', value: 1500, min: 500, max: 4000, step: 10 }
+            ]
+        },
+        {
+            name: 'HI-HAT',
+            params: [
+                { name: 'Cutoff', value: 8000, min: 2000, max: 15000, step: 100 },
+                { name: 'Decay', value: 0.05, min: 0.02, max: 0.3, step: 0.01 },
+                { name: 'Res', value: 5, min: 0, max: 20, step: 0.1 },
+                { name: 'Vol', value: 0.8, min: 0, max: 1.5, step: 0.01 }
+            ]
+        },
+        {
+            name: 'FM BASS',
+            params: [
+                { name: 'CarFreq', value: 55, min: 20, max: 200, step: 1 },
+                { name: 'ModFreq', value: 110, min: 20, max: 400, step: 1 },
+                { name: 'ModIdx', value: 500, min: 0, max: 2000, step: 10 },
+                { name: 'Decay', value: 0.4, min: 0.1, max: 1.5, step: 0.01 }
+            ]
+        },
+        {
+            name: 'FM LEAD',
+            params: [
+                { name: 'CarFreq', value: 440, min: 100, max: 2000, step: 1 },
+                { name: 'ModFreq', value: 884, min: 100, max: 4000, step: 1 },
+                { name: 'ModIdx', value: 600, min: 0, max: 3000, step: 10 },
+                { name: 'Decay', value: 0.3, min: 0.1, max: 2.0, step: 0.01 }
+            ]
+        }
     ];
 
     const stepsCount = 16;
@@ -110,12 +202,33 @@
 
     // --- АУДИО ДВИЖОК ---
 
+    function makeDistortionCurve(amount) {
+        let k = typeof amount === 'number' ? amount : 50,
+            n_samples = 44100,
+            curve = new Float32Array(n_samples),
+            deg = Math.PI / 180,
+            i = 0,
+            x;
+        for ( ; i < n_samples; ++i ) {
+            x = i * 2 / n_samples - 1;
+            curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
+        }
+        return curve;
+    }
+
     function initAudio() {
         if(audioCtx) return;
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.8;
+
+        // Master Distortion
+        distortionNode = audioCtx.createWaveShaper();
+        distortionNode.curve = makeDistortionCurve(10); // initial 10 amount
+        distortionNode.oversample = '4x';
+
+        distortionNode.connect(masterGain);
         masterGain.connect(audioCtx.destination);
 
         // Математический Reverb (Генерация Impulse Response)
@@ -153,29 +266,46 @@
 
     // Маршрутизатор (отправляет звук в мастер и на шины эффектов)
     function routeAudio(source) {
-        source.connect(masterGain);
+        source.connect(distortionNode); // В дисторшн перед мастером
         source.connect(delayNode);
         source.connect(reverbNode);
     }
 
     // --- АЛГОРИТМЫ СИНТЕЗА ---
 
-    function playKick(time, pitch, decay) {
+    function playKick(time, p) {
+        const pitch = p[0].value; const decay = p[1].value; const sweep = p[2].value; const click = p[3].value;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.frequency.setValueAtTime(pitch, time);
-        osc.frequency.exponentialRampToValueAtTime(0.01, time + decay);
+        osc.frequency.exponentialRampToValueAtTime(0.001, time + decay / (sweep/10));
+
+        // click
+        if (click > 0) {
+            const clickOsc = audioCtx.createOscillator();
+            clickOsc.type = 'square';
+            clickOsc.frequency.setValueAtTime(3000, time);
+            clickOsc.frequency.exponentialRampToValueAtTime(0.01, time + 0.02);
+            const clickGain = audioCtx.createGain();
+            clickGain.gain.setValueAtTime(click, time);
+            clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
+            clickOsc.connect(clickGain); routeAudio(clickGain);
+            clickOsc.start(time); clickOsc.stop(time + 0.02);
+        }
+
         gain.gain.setValueAtTime(1, time);
-        gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
         osc.connect(gain); routeAudio(gain);
         osc.start(time); osc.stop(time + decay);
     }
 
-    function playSnare(time, snapPitch, decay) {
+    function playSnare(time, p) {
+        const tone = p[0].value; const decay = p[1].value; const noiseVol = p[2].value; const hpf = p[3].value;
         const osc = audioCtx.createOscillator();
         const oscGain = audioCtx.createGain();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(snapPitch, time);
+        osc.frequency.setValueAtTime(tone, time);
+        osc.frequency.exponentialRampToValueAtTime(tone / 2, time + decay / 2);
         oscGain.gain.setValueAtTime(0.8, time);
         oscGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
         osc.connect(oscGain); routeAudio(oscGain);
@@ -189,15 +319,16 @@
         const noise = audioCtx.createBufferSource();
         noise.buffer = buffer;
         const noiseFilter = audioCtx.createBiquadFilter();
-        noiseFilter.type = 'highpass'; noiseFilter.frequency.value = 1500;
+        noiseFilter.type = 'highpass'; noiseFilter.frequency.value = hpf;
         const noiseGain = audioCtx.createGain();
-        noiseGain.gain.setValueAtTime(0.6, time);
+        noiseGain.gain.setValueAtTime(noiseVol, time);
         noiseGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
         noise.connect(noiseFilter).connect(noiseGain); routeAudio(noiseGain);
         noise.start(time);
     }
 
-    function playHiHat(time, color, decay) {
+    function playHiHat(time, p) {
+        const cutoff = p[0].value; const decay = p[1].value; const res = p[2].value; const vol = p[3].value;
         const bufferSize = audioCtx.sampleRate * decay;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -205,37 +336,44 @@
         
         const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
         const filter = audioCtx.createBiquadFilter();
-        filter.type = 'bandpass'; filter.frequency.value = color;
+        filter.type = 'bandpass'; filter.frequency.value = cutoff; filter.Q.value = res;
         const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        gain.gain.setValueAtTime(vol, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
         noise.connect(filter).connect(gain); routeAudio(gain);
         noise.start(time);
     }
 
-    function playBass(time, cutoff, res) {
-        const osc = audioCtx.createOscillator(); osc.type = 'square'; osc.frequency.value = 55;
-        const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass';
-        filter.Q.value = res;
-        filter.frequency.setValueAtTime(cutoff, time);
-        filter.frequency.exponentialRampToValueAtTime(50, time + 0.4);
-        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.7, time); gain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
-        osc.connect(filter).connect(gain); routeAudio(gain);
-        osc.start(time); osc.stop(time + 0.4);
+    function playBass(time, p) {
+        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value; const decay = p[3].value;
+        const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
+        const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
+
+        const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
+        // envelop for mod index
+        modGain.gain.setValueAtTime(mIdx * 2, time); modGain.gain.exponentialRampToValueAtTime(mIdx, time + decay);
+
+        modulator.connect(modGain); modGain.connect(carrier.frequency);
+
+        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        carrier.connect(gain); routeAudio(gain);
+
+        modulator.start(time); carrier.start(time);
+        modulator.stop(time + decay); carrier.stop(time + decay);
     }
 
-    function playLead(time, modIndex, baseFreq) {
-        // FM Синтез
-        const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = baseFreq;
-        const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = baseFreq * 2.01; // Небольшой расстрой
+    function playLead(time, p) {
+        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value; const decay = p[3].value;
+        const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
+        const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
         
-        const modGain = audioCtx.createGain(); modGain.gain.value = modIndex;
-        modulator.connect(modGain); modGain.connect(carrier.frequency); // Модулируем частоту несущей!
+        const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
+        modulator.connect(modGain); modGain.connect(carrier.frequency);
         
-        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.5, time); gain.gain.setTargetAtTime(0, time + 0.1, 0.1);
+        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.5, time); gain.gain.setTargetAtTime(0, time + decay / 2, decay / 2);
         carrier.connect(gain); routeAudio(gain);
         
         modulator.start(time); carrier.start(time);
-        modulator.stop(time + 0.5); carrier.stop(time + 0.5);
+        modulator.stop(time + decay); carrier.stop(time + decay);
     }
 
     const soundEngines = [playKick, playSnare, playHiHat, playBass, playLead];
@@ -252,17 +390,14 @@
         
         const params = document.createElement('div'); params.className = 'track-params';
         
-        // Макрос 1
-        const p1Div = document.createElement('div'); p1Div.className = 'knob-group';
-        p1Div.innerHTML = `<label>${synth.p1Name}</label><input type="range" min="${synth.p1Min}" max="${synth.p1Max}" step="0.01" value="${synth.p1}">`;
-        p1Div.querySelector('input').addEventListener('input', (e) => synths[trackIdx].p1 = parseFloat(e.target.value));
-        
-        // Макрос 2
-        const p2Div = document.createElement('div'); p2Div.className = 'knob-group';
-        p2Div.innerHTML = `<label>${synth.p2Name}</label><input type="range" min="${synth.p2Min}" max="${synth.p2Max}" step="0.01" value="${synth.p2}">`;
-        p2Div.querySelector('input').addEventListener('input', (e) => synths[trackIdx].p2 = parseFloat(e.target.value));
-        
-        params.appendChild(p1Div); params.appendChild(p2Div); header.appendChild(params); trackDiv.appendChild(header);
+        synth.params.forEach((param, pIdx) => {
+            const pDiv = document.createElement('div'); pDiv.className = 'knob-group';
+            pDiv.innerHTML = `<label>${param.name}</label><input type="range" min="${param.min}" max="${param.max}" step="${param.step}" value="${param.value}">`;
+            pDiv.querySelector('input').addEventListener('input', (e) => synths[trackIdx].params[pIdx].value = parseFloat(e.target.value));
+            params.appendChild(pDiv);
+        });
+
+        header.appendChild(params); trackDiv.appendChild(header);
 
         // Сетка
         const gridDiv = document.createElement('div'); gridDiv.className = 'sequencer-grid';
@@ -287,16 +422,23 @@
     // Глобальные контроллы
     let isPlaying = false, currentStep = 0, nextNoteTime = 0.0, bpm = 120, timerID;
 
+    document.getElementById('themeSelect').addEventListener('change', (e) => {
+        document.documentElement.setAttribute('data-theme', e.target.value);
+    });
+
     document.getElementById('bpm').addEventListener('input', (e) => {
         bpm = e.target.value; document.getElementById('bpmVal').innerText = bpm;
         if (audioCtx && delayNode) delayNode.delayTime.value = (60 / bpm) * 0.75; // Синхронизация дилея (Dotted 8th)
     });
+
+    document.getElementById('distMix').addEventListener('input', (e) => { if(audioCtx) distortionNode.curve = makeDistortionCurve(parseInt(e.target.value)); });
     document.getElementById('delayMix').addEventListener('input', (e) => { if(audioCtx) delayMix.gain.value = e.target.value / 100; });
     document.getElementById('reverbMix').addEventListener('input', (e) => { if(audioCtx) reverbMix.gain.value = e.target.value / 100; });
+    document.getElementById('masterVol').addEventListener('input', (e) => { if(audioCtx) masterGain.gain.value = e.target.value / 100; });
 
     function scheduleNote(stepNumber, time) {
         for (let t = 0; t < synths.length; t++) {
-            if (grid[t][stepNumber]) soundEngines[t](time, synths[t].p1, synths[t].p2);
+            if (grid[t][stepNumber]) soundEngines[t](time, synths[t].params);
         }
         requestAnimationFrame(() => {
             for (let t = 0; t < synths.length; t++) {
