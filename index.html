@@ -86,20 +86,20 @@
             padding: 10px; border-radius: 6px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
         }
 
-        .track-header { width: 340px; display: flex; flex-direction: column; gap: 8px; padding-right: 15px; border-right: 2px solid #444; flex-shrink: 0;}
+        .track-header { width: 520px; display: flex; flex-direction: column; gap: 8px; padding-right: 15px; border-right: 2px solid #444; flex-shrink: 0;}
         .track-title { font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-        .track-params { display: flex; gap: 10px; flex-wrap: wrap;}
+        .track-params { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 5px; }
 
         .sequencer-grid { display: flex; gap: 6px; padding-left: 15px; flex-wrap: nowrap; overflow-x: auto; }
 
         .step {
-            width: 35px; height: 45px; background-color: var(--grid-off);
-            border-radius: 4px; cursor: pointer; transition: 0.1s; border: 1px solid #222;
+            width: 35px; height: 45px; background-color: var(--grid-off); box-sizing: border-box;
+            border-radius: 4px; cursor: pointer; transition: 0.05s; border: 2px solid #222;
         }
-        .step.active { background-color: var(--grid-on); box-shadow: 0 0 12px rgba(0, 210, 255, 0.4); }
-        .step.playing { border: 2px solid white; transform: scale(1.05); background-color: var(--grid-active); }
+        .step.active { background-color: var(--grid-on); box-shadow: 0 0 12px rgba(0, 210, 255, 0.4); border-color: var(--grid-on); }
+        .step.playing { border: 2px solid white; background-color: var(--grid-active); box-shadow: 0 0 15px white; }
 
-        .fx-section { display: flex; gap: 15px; border-left: 1px solid #555; padding-left: 15px; margin-left: 15px; }
+        .fx-section { display: flex; gap: 15px; border-left: 1px solid #555; padding-left: 15px; margin-left: 15px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
@@ -146,52 +146,62 @@
 <script>
     let audioCtx;
     let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix, distortionNode;
-    
-    // Параметры синтеза для каждого инструмента
+
+    // Параметры синтеза для каждого инструмента (до Ableton еще идти, но 6 параметров — это уже заявка на мощь)
     const synths = [
         {
             name: 'KICK',
             params: [
-                { name: 'Pitch', value: 150, min: 50, max: 300, step: 1 },
-                { name: 'Decay', value: 0.5, min: 0.1, max: 2.0, step: 0.01 },
-                { name: 'Sweep', value: 50, min: 10, max: 100, step: 1 },
-                { name: 'Click', value: 0.2, min: 0, max: 1, step: 0.01 }
+                { name: 'Pitch', value: 150, min: 40, max: 300, step: 1 },
+                { name: 'Decay', value: 0.5, min: 0.1, max: 3.0, step: 0.01 },
+                { name: 'Sweep', value: 50, min: 10, max: 150, step: 1 },
+                { name: 'Click', value: 0.3, min: 0, max: 1, step: 0.01 },
+                { name: 'Drive', value: 0, min: 0, max: 50, step: 1 },
+                { name: 'Vol', value: 1.0, min: 0, max: 2.0, step: 0.01 }
             ]
         },
         {
             name: 'SNARE',
             params: [
-                { name: 'Tone', value: 250, min: 100, max: 500, step: 1 },
-                { name: 'Decay', value: 0.2, min: 0.05, max: 0.6, step: 0.01 },
+                { name: 'Tone', value: 200, min: 100, max: 500, step: 1 },
+                { name: 'Decay', value: 0.25, min: 0.05, max: 1.0, step: 0.01 },
                 { name: 'Noise', value: 0.8, min: 0, max: 2, step: 0.01 },
-                { name: 'HPF', value: 1500, min: 500, max: 4000, step: 10 }
+                { name: 'HPF', value: 1500, min: 200, max: 4000, step: 10 },
+                { name: 'Snap', value: 0.5, min: 0, max: 1, step: 0.01 },
+                { name: 'Vol', value: 1.0, min: 0, max: 2.0, step: 0.01 }
             ]
         },
         {
             name: 'HI-HAT',
             params: [
-                { name: 'Cutoff', value: 8000, min: 2000, max: 15000, step: 100 },
-                { name: 'Decay', value: 0.05, min: 0.02, max: 0.3, step: 0.01 },
+                { name: 'Cutoff', value: 8000, min: 1000, max: 15000, step: 100 },
+                { name: 'Decay', value: 0.05, min: 0.02, max: 0.5, step: 0.01 },
                 { name: 'Res', value: 5, min: 0, max: 20, step: 0.1 },
-                { name: 'Vol', value: 0.8, min: 0, max: 1.5, step: 0.01 }
+                { name: 'Tone', value: 5000, min: 2000, max: 10000, step: 100 },
+                { name: 'Drive', value: 0, min: 0, max: 50, step: 1 },
+                { name: 'Vol', value: 0.8, min: 0, max: 2.0, step: 0.01 }
             ]
         },
         {
-            name: 'FM BASS',
+            name: '808 BASS / FM',
             params: [
-                { name: 'CarFreq', value: 55, min: 20, max: 200, step: 1 },
-                { name: 'ModFreq', value: 110, min: 20, max: 400, step: 1 },
-                { name: 'ModIdx', value: 500, min: 0, max: 2000, step: 10 },
-                { name: 'Decay', value: 0.4, min: 0.1, max: 1.5, step: 0.01 }
+                { name: 'SubFreq', value: 45, min: 20, max: 150, step: 1 },
+                { name: 'ModFreq', value: 90, min: 20, max: 600, step: 1 },
+                { name: 'ModIdx', value: 200, min: 0, max: 3000, step: 10 },
+                { name: 'Decay', value: 1.2, min: 0.1, max: 4.0, step: 0.01 },
+                { name: 'Glide', value: 0.1, min: 0, max: 0.5, step: 0.01 },
+                { name: 'Drive', value: 15, min: 0, max: 100, step: 1 }
             ]
         },
         {
             name: 'FM LEAD',
             params: [
-                { name: 'CarFreq', value: 440, min: 100, max: 2000, step: 1 },
-                { name: 'ModFreq', value: 884, min: 100, max: 4000, step: 1 },
+                { name: 'CarFreq', value: 440, min: 50, max: 2000, step: 1 },
+                { name: 'ModFreq', value: 884, min: 50, max: 4000, step: 1 },
                 { name: 'ModIdx', value: 600, min: 0, max: 3000, step: 10 },
-                { name: 'Decay', value: 0.3, min: 0.1, max: 2.0, step: 0.01 }
+                { name: 'Decay', value: 0.3, min: 0.1, max: 2.0, step: 0.01 },
+                { name: 'Attack', value: 0.01, min: 0.01, max: 0.5, step: 0.01 },
+                { name: 'Vol', value: 0.8, min: 0, max: 2.0, step: 0.01 }
             ]
         }
     ];
@@ -219,7 +229,7 @@
     function initAudio() {
         if(audioCtx) return;
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
+
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.8;
 
@@ -242,7 +252,7 @@
         }
         reverbNode = audioCtx.createConvolver();
         reverbNode.buffer = impulse;
-        
+
         reverbMix = audioCtx.createGain();
         reverbMix.gain.value = 0.15;
         reverbNode.connect(reverbMix).connect(masterGain);
@@ -252,14 +262,14 @@
         delayNode.delayTime.value = 0.375; // 3/16 при 120 bpm (будет обновляться)
         feedbackGain = audioCtx.createGain();
         feedbackGain.gain.value = 0.4;
-        
+
         delayMix = audioCtx.createGain();
         delayMix.gain.value = 0.2;
 
         delayNode.connect(feedbackGain);
         feedbackGain.connect(delayNode);
         delayNode.connect(delayMix).connect(masterGain);
-        
+
         // Отправляем дилей в реверб для объема
         delayNode.connect(reverbNode);
     }
@@ -273,8 +283,17 @@
 
     // --- АЛГОРИТМЫ СИНТЕЗА ---
 
+    function createDrive(amount) {
+        const shaper = audioCtx.createWaveShaper();
+        shaper.curve = makeDistortionCurve(amount);
+        shaper.oversample = '4x';
+        return shaper;
+    }
+
     function playKick(time, p) {
         const pitch = p[0].value; const decay = p[1].value; const sweep = p[2].value; const click = p[3].value;
+        const driveAmt = p[4].value; const vol = p[5].value;
+
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.frequency.setValueAtTime(pitch, time);
@@ -287,26 +306,38 @@
             clickOsc.frequency.setValueAtTime(3000, time);
             clickOsc.frequency.exponentialRampToValueAtTime(0.01, time + 0.02);
             const clickGain = audioCtx.createGain();
-            clickGain.gain.setValueAtTime(click, time);
+            clickGain.gain.setValueAtTime(click * vol, time);
             clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
             clickOsc.connect(clickGain); routeAudio(clickGain);
             clickOsc.start(time); clickOsc.stop(time + 0.02);
         }
 
-        gain.gain.setValueAtTime(1, time);
+        gain.gain.setValueAtTime(vol, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
-        osc.connect(gain); routeAudio(gain);
+
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            osc.connect(drv).connect(gain);
+        } else {
+            osc.connect(gain);
+        }
+
+        routeAudio(gain);
         osc.start(time); osc.stop(time + decay);
     }
 
     function playSnare(time, p) {
         const tone = p[0].value; const decay = p[1].value; const noiseVol = p[2].value; const hpf = p[3].value;
+        const snap = p[4].value; const vol = p[5].value;
+
         const osc = audioCtx.createOscillator();
         const oscGain = audioCtx.createGain();
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(tone, time);
-        osc.frequency.exponentialRampToValueAtTime(tone / 2, time + decay / 2);
-        oscGain.gain.setValueAtTime(0.8, time);
+
+        // Snap (быстрое падение тона в начале для щелчка)
+        osc.frequency.exponentialRampToValueAtTime(tone / 2, time + 0.05);
+        oscGain.gain.setValueAtTime(0.8 * vol * snap, time);
         oscGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
         osc.connect(oscGain); routeAudio(oscGain);
         osc.start(time); osc.stop(time + decay);
@@ -315,63 +346,96 @@
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-        
+
         const noise = audioCtx.createBufferSource();
         noise.buffer = buffer;
         const noiseFilter = audioCtx.createBiquadFilter();
         noiseFilter.type = 'highpass'; noiseFilter.frequency.value = hpf;
         const noiseGain = audioCtx.createGain();
-        noiseGain.gain.setValueAtTime(noiseVol, time);
+        noiseGain.gain.setValueAtTime(noiseVol * vol, time);
         noiseGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
         noise.connect(noiseFilter).connect(noiseGain); routeAudio(noiseGain);
         noise.start(time);
     }
 
     function playHiHat(time, p) {
-        const cutoff = p[0].value; const decay = p[1].value; const res = p[2].value; const vol = p[3].value;
-        const bufferSize = audioCtx.sampleRate * decay;
-        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-        
-        const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
-        const filter = audioCtx.createBiquadFilter();
+        const cutoff = p[0].value; const decay = p[1].value; const res = p[2].value;
+        const tone = p[3].value; const driveAmt = p[4].value; const vol = p[5].value;
+
+        // Металлический тон вместо простого шума (группа осцилляторов)
+        const ratios = [1, 1.34, 1.89, 2.4, 3.1];
+        const oscsGain = audioCtx.createGain();
+        oscsGain.gain.setValueAtTime(vol, time);
+        oscsGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+
+        let filter = audioCtx.createBiquadFilter();
         filter.type = 'bandpass'; filter.frequency.value = cutoff; filter.Q.value = res;
-        const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(vol, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
-        noise.connect(filter).connect(gain); routeAudio(gain);
-        noise.start(time);
+
+        ratios.forEach(ratio => {
+            let osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.value = tone * ratio;
+            osc.connect(filter);
+            osc.start(time); osc.stop(time + decay);
+        });
+
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            filter.connect(drv).connect(oscsGain);
+        } else {
+            filter.connect(oscsGain);
+        }
+
+        routeAudio(oscsGain);
     }
 
     function playBass(time, p) {
-        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value; const decay = p[3].value;
-        const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
+        const subFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value;
+        const decay = p[3].value; const glide = p[4].value; const driveAmt = p[5].value;
+
+        const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
+        // 808 Pitch Glide Effect
+        carrier.frequency.setValueAtTime(subFreq * 3, time);
+        carrier.frequency.exponentialRampToValueAtTime(subFreq, time + glide);
+
         const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
-
         const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
-        // envelop for mod index
-        modGain.gain.setValueAtTime(mIdx * 2, time); modGain.gain.exponentialRampToValueAtTime(mIdx, time + decay);
 
+        modGain.gain.setValueAtTime(mIdx * 3, time); modGain.gain.exponentialRampToValueAtTime(mIdx, time + decay);
         modulator.connect(modGain); modGain.connect(carrier.frequency);
 
-        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
-        carrier.connect(gain); routeAudio(gain);
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
 
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            carrier.connect(drv).connect(gain);
+        } else {
+            carrier.connect(gain);
+        }
+
+        routeAudio(gain);
         modulator.start(time); carrier.start(time);
         modulator.stop(time + decay); carrier.stop(time + decay);
     }
 
     function playLead(time, p) {
-        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value; const decay = p[3].value;
+        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value;
+        const decay = p[3].value; const attack = p[4].value; const vol = p[5].value;
+
         const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
         const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
-        
+
         const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
         modulator.connect(modGain); modGain.connect(carrier.frequency);
-        
-        const gain = audioCtx.createGain(); gain.gain.setValueAtTime(0.5, time); gain.gain.setTargetAtTime(0, time + decay / 2, decay / 2);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.001, time);
+        gain.gain.linearRampToValueAtTime(vol, time + attack);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
         carrier.connect(gain); routeAudio(gain);
-        
+
         modulator.start(time); carrier.start(time);
         modulator.stop(time + decay); carrier.stop(time + decay);
     }
@@ -383,13 +447,13 @@
     const daw = document.getElementById('daw');
     synths.forEach((synth, trackIdx) => {
         const trackDiv = document.createElement('div'); trackDiv.className = 'track';
-        
+
         // Панель управления синтезатором
         const header = document.createElement('div'); header.className = 'track-header';
         header.innerHTML = `<div class="track-title">${synth.name}</div>`;
-        
+
         const params = document.createElement('div'); params.className = 'track-params';
-        
+
         synth.params.forEach((param, pIdx) => {
             const pDiv = document.createElement('div'); pDiv.className = 'knob-group';
             pDiv.innerHTML = `<label>${param.name}</label><input type="range" min="${param.min}" max="${param.max}" step="${param.step}" value="${param.value}">`;
