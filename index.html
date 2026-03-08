@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math DAW - Pro Edition</title>
+    <style>
+        /* DOOM Theme (Default) */
+        :root, :root[data-theme="doom"] {
+            --bg-color: #1a0f0f;
+            --panel-bg: #2b1111;
+            --track-bg: #381515;
+            --accent: #ff3300;
+            --accent-hover: #ff6600;
+            --text: #ffcccc;
+            --grid-off: #4a1c1c;
+            --grid-on: #ff3300;
+            --grid-active: #fff;
+            --font: 'Inter', 'Segoe UI', sans-serif;
+        }
+
+        /* Synthwave Theme */
+        :root[data-theme="synthwave"] {
+            --bg-color: #0d0221;
+            --panel-bg: #261447;
+            --track-bg: #321b5c;
+            --accent: #ff007f;
+            --accent-hover: #00f0ff;
+            --text: #f5d0fe;
+            --grid-off: #462580;
+            --grid-on: #ff007f;
+            --grid-active: #00f0ff;
+        }
+
+        /* Standard Dark Theme */
+        :root[data-theme="dark"] {
+            --bg-color: #121212;
+            --panel-bg: #222;
+            --track-bg: #2a2a2a;
+            --accent: #00d2ff;
+            --accent-hover: #3a86ff;
+            --text: #eee;
+            --grid-off: #333;
+            --grid-on: #00d2ff;
+            --grid-active: #fff;
+        }
+
+        body {
+            font-family: var(--font); background-color: var(--bg-color); color: var(--text);
+            margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;
+            user-select: none;
+        }
+
+        .header { display: flex; justify-content: space-between; width: 100%; max-width: 900px; margin-bottom: 20px; }
+        h1 { margin: 0; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+
+        .master-controls {
+            display: flex; gap: 15px; background: var(--panel-bg); padding: 15px 25px;
+            border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .theme-selector {
+            display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: #aaa; margin-left: auto;
+        }
+        .theme-selector select {
+            background: var(--bg-color); color: var(--text); border: 1px solid var(--accent);
+            padding: 5px; border-radius: 4px; outline: none; cursor: pointer;
+        }
+
+        button.play-btn {
+            background: var(--accent); color: #000; border: none; padding: 10px 30px;
+            font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s;
+        }
+        button.play-btn:hover { background: var(--accent-hover); color: white; }
+
+        .knob-group { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12px; color: #aaa; }
+        input[type=range] { width: 80px; accent-color: var(--accent); cursor: pointer; }
+
+        .daw-container {
+            display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 900px;
+        }
+
+        .track {
+            display: flex; align-items: center; background: var(--track-bg);
+            padding: 10px; border-radius: 6px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .track-header { width: 520px; display: flex; flex-direction: column; gap: 8px; padding-right: 15px; border-right: 2px solid #444; flex-shrink: 0;}
+        .track-title { font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .track-params { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 5px; }
+
+        .sequencer-grid { display: flex; gap: 6px; padding-left: 15px; flex-wrap: nowrap; overflow-x: auto; }
+
+        .step {
+            width: 35px; height: 45px; background-color: var(--grid-off); box-sizing: border-box;
+            border-radius: 4px; cursor: pointer; transition: 0.05s; border: 2px solid #222;
+        }
+        .step.active { background-color: var(--grid-on); box-shadow: 0 0 12px rgba(0, 210, 255, 0.4); border-color: var(--grid-on); }
+        .step.playing { border: 2px solid white; background-color: var(--grid-active); box-shadow: 0 0 15px white; }
+
+        .fx-section { display: flex; gap: 15px; border-left: 1px solid #555; padding-left: 15px; margin-left: 15px; flex-wrap: wrap; }
+
+        .vu-meter-container {
+            width: 15px; height: 60px; background: #111; border: 1px solid #333; border-radius: 4px;
+            display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; margin-left: 10px;
+        }
+        .vu-meter-level { width: 100%; height: 0%; background: var(--accent); transition: height 0.05s ease-out; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Math DAW</h1>
+        <div class="master-controls">
+            <button class="play-btn" id="playBtn">▶ PLAY / STOP</button>
+            <div class="file-ops">
+                <button id="saveBtn" class="sm-btn">SAVE</button>
+                <button id="loadBtn" class="sm-btn">LOAD</button>
+            </div>
+            <div class="knob-group">
+                <label>BPM: <span id="bpmVal">120</span></label>
+                <input type="range" id="bpm" min="60" max="200" value="120">
+            </div>
+            <div class="fx-section">
+                <div class="knob-group">
+                    <label>Distort</label>
+                    <input type="range" id="distMix" min="0" max="100" value="10">
+                </div>
+                <div class="knob-group">
+                    <label>Delay</label>
+                    <input type="range" id="delayMix" min="0" max="100" value="20">
+                </div>
+                <div class="knob-group">
+                    <label>Reverb</label>
+                    <input type="range" id="reverbMix" min="0" max="100" value="15">
+                </div>
+                <div class="knob-group">
+                    <label>Master Vol</label>
+                    <input type="range" id="masterVol" min="0" max="150" value="80">
+                </div>
+            </div>
+            <div class="theme-selector">
+                <label>Theme</label>
+                <select id="themeSelect">
+                    <option value="doom">Doom</option>
+                    <option value="synthwave">Synthwave</option>
+                    <option value="dark">Pro Dark</option>
+                </select>
+            </div>
+            <div class="vu-meter-container">
+                <div class="vu-meter-level" id="vuMeter"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="daw-container" id="daw"></div>
+
+<script>
+    let audioCtx;
+    let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix, distortionNode, analyser;
+    let vuDataArray;
+
+    // Параметры синтеза для каждого инструмента (до Ableton еще идти, но 6 параметров — это уже заявка на мощь)
+    const synths = [
+        {
+            name: 'KICK',
+            params: [
+                { name: 'Pitch', value: 150, min: 40, max: 300, step: 1 },
+                { name: 'Decay', value: 0.5, min: 0.1, max: 3.0, step: 0.01 },
+                { name: 'Sweep', value: 50, min: 10, max: 150, step: 1 },
+                { name: 'Click', value: 0.3, min: 0, max: 1, step: 0.01 },
+                { name: 'Drive', value: 0, min: 0, max: 50, step: 1 },
+                { name: 'Vol', value: 1.0, min: 0, max: 2.0, step: 0.01 }
+            ]
+        },
+        {
+            name: 'SNARE',
+            params: [
+                { name: 'Tone', value: 200, min: 100, max: 500, step: 1 },
+                { name: 'Decay', value: 0.25, min: 0.05, max: 1.0, step: 0.01 },
+                { name: 'Noise', value: 0.8, min: 0, max: 2, step: 0.01 },
+                { name: 'HPF', value: 1500, min: 200, max: 4000, step: 10 },
+                { name: 'Snap', value: 0.5, min: 0, max: 1, step: 0.01 },
+                { name: 'Vol', value: 1.0, min: 0, max: 2.0, step: 0.01 }
+            ]
+        },
+        {
+            name: 'HI-HAT',
+            params: [
+                { name: 'Cutoff', value: 8000, min: 1000, max: 15000, step: 100 },
+                { name: 'Decay', value: 0.05, min: 0.02, max: 0.5, step: 0.01 },
+                { name: 'Res', value: 5, min: 0, max: 20, step: 0.1 },
+                { name: 'Tone', value: 5000, min: 2000, max: 10000, step: 100 },
+                { name: 'Drive', value: 0, min: 0, max: 50, step: 1 },
+                { name: 'Vol', value: 0.8, min: 0, max: 2.0, step: 0.01 }
+            ]
+        },
+        {
+            name: '808 BASS / FM',
+            params: [
+                { name: 'SubFreq', value: 45, min: 20, max: 150, step: 1 },
+                { name: 'ModFreq', value: 90, min: 20, max: 600, step: 1 },
+                { name: 'ModIdx', value: 200, min: 0, max: 3000, step: 10 },
+                { name: 'Decay', value: 1.2, min: 0.1, max: 4.0, step: 0.01 },
+                { name: 'Glide', value: 0.1, min: 0, max: 0.5, step: 0.01 },
+                { name: 'Drive', value: 15, min: 0, max: 100, step: 1 }
+            ]
+        },
+        {
+            name: 'FM LEAD',
+            params: [
+                { name: 'CarFreq', value: 440, min: 50, max: 2000, step: 1 },
+                { name: 'ModFreq', value: 884, min: 50, max: 4000, step: 1 },
+                { name: 'ModIdx', value: 600, min: 0, max: 3000, step: 10 },
+                { name: 'Decay', value: 0.3, min: 0.1, max: 2.0, step: 0.01 },
+                { name: 'Attack', value: 0.01, min: 0.01, max: 0.5, step: 0.01 },
+                { name: 'Vol', value: 0.8, min: 0, max: 2.0, step: 0.01 }
+            ]
+        }
+    ];
+
+    const stepsCount = 16;
+    let grid = Array(synths.length).fill().map(() => Array(stepsCount).fill(false));
+    const uiSteps = [];
+
+    // --- АУДИО ДВИЖОК ---
+
+    function makeDistortionCurve(amount) {
+        let k = typeof amount === 'number' ? amount : 50,
+            n_samples = 44100,
+            curve = new Float32Array(n_samples),
+            deg = Math.PI / 180,
+            i = 0,
+            x;
+        for ( ; i < n_samples; ++i ) {
+            x = i * 2 / n_samples - 1;
+            curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
+        }
+        return curve;
+    }
+
+    function initAudio() {
+        if(audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.8;
+
+        // Master Distortion
+        distortionNode = audioCtx.createWaveShaper();
+        distortionNode.curve = makeDistortionCurve(10); // initial 10 amount
+        distortionNode.oversample = '4x';
+
+        distortionNode.connect(masterGain);
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        masterGain.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        vuDataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        updateVUMeter();
+
+        // Математический Reverb (Генерация Impulse Response)
+        let len = audioCtx.sampleRate * 2.5; // 2.5 секунды
+        let impulse = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+        for (let i = 0; i < 2; i++) {
+            let channel = impulse.getChannelData(i);
+            for (let j = 0; j < len; j++) {
+                channel[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / len, 4); // Экспоненциальное затухание шума
+            }
+        }
+        reverbNode = audioCtx.createConvolver();
+        reverbNode.buffer = impulse;
+
+        reverbMix = audioCtx.createGain();
+        reverbMix.gain.value = 0.15;
+        reverbNode.connect(reverbMix).connect(masterGain);
+
+        // Delay Bus
+        delayNode = audioCtx.createDelay();
+        delayNode.delayTime.value = 0.375; // 3/16 при 120 bpm (будет обновляться)
+        feedbackGain = audioCtx.createGain();
+        feedbackGain.gain.value = 0.4;
+
+        delayMix = audioCtx.createGain();
+        delayMix.gain.value = 0.2;
+
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(delayMix).connect(masterGain);
+
+        // Отправляем дилей в реверб для объема
+        delayNode.connect(reverbNode);
+    }
+
+    // Маршрутизатор (отправляет звук в мастер и на шины эффектов)
+    function routeAudio(source) {
+        source.connect(distortionNode); // В дисторшн перед мастером
+        source.connect(delayNode);
+        source.connect(reverbNode);
+    }
+
+    // --- АЛГОРИТМЫ СИНТЕЗА ---
+
+    const curveCache = {};
+    function getCachedDistortionCurve(amount) {
+        if (!curveCache[amount]) curveCache[amount] = makeDistortionCurve(amount);
+        return curveCache[amount];
+    }
+
+    function createDrive(amount) {
+        const shaper = audioCtx.createWaveShaper();
+        shaper.curve = getCachedDistortionCurve(amount);
+        shaper.oversample = '4x';
+        return shaper;
+    }
+
+    function playKick(time, p) {
+        const pitch = Math.max(0.001, p[0].value); const decay = Math.max(0.01, p[1].value); const sweep = p[2].value;
+        const click = p[3].value; const driveAmt = p[4].value; const vol = Math.max(0.001, p[5].value);
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(pitch, time);
+        osc.frequency.exponentialRampToValueAtTime(0.001, time + decay / (sweep/10));
+
+        // click
+        if (click > 0) {
+            const clickOsc = audioCtx.createOscillator();
+            clickOsc.type = 'square';
+            clickOsc.frequency.setValueAtTime(3000, time);
+            clickOsc.frequency.exponentialRampToValueAtTime(0.01, time + 0.02);
+            const clickGain = audioCtx.createGain();
+            clickGain.gain.setValueAtTime(Math.max(0.001, click * vol), time);
+            clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
+            clickOsc.connect(clickGain); routeAudio(clickGain);
+            clickOsc.start(time); clickOsc.stop(time + 0.02);
+        }
+
+        gain.gain.setValueAtTime(vol, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            osc.connect(drv).connect(gain);
+        } else {
+            osc.connect(gain);
+        }
+
+        routeAudio(gain);
+        osc.start(time); osc.stop(time + decay);
+    }
+
+    function playSnare(time, p) {
+        const tone = Math.max(0.001, p[0].value); const decay = Math.max(0.01, p[1].value); const noiseVol = p[2].value;
+        const hpf = p[3].value; const snap = p[4].value; const vol = Math.max(0.001, p[5].value);
+
+        const osc = audioCtx.createOscillator();
+        const oscGain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(tone, time);
+
+        // Snap (быстрое падение тона в начале для щелчка)
+        osc.frequency.exponentialRampToValueAtTime(tone / 2, time + 0.05);
+        oscGain.gain.setValueAtTime(Math.max(0.001, 0.8 * vol * snap), time);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+        osc.connect(oscGain); routeAudio(oscGain);
+        osc.start(time); osc.stop(time + decay);
+
+        const bufferSize = audioCtx.sampleRate * decay;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'highpass'; noiseFilter.frequency.value = hpf;
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(Math.max(0.001, noiseVol * vol), time);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+        noise.connect(noiseFilter).connect(noiseGain); routeAudio(noiseGain);
+        noise.start(time);
+    }
+
+    function playHiHat(time, p) {
+        const cutoff = p[0].value; const decay = Math.max(0.01, p[1].value); const res = p[2].value;
+        const tone = p[3].value; const driveAmt = p[4].value; const vol = Math.max(0.001, p[5].value);
+
+        // Металлический тон вместо простого шума (группа осцилляторов)
+        const ratios = [1, 1.34, 1.89, 2.4, 3.1];
+        const oscsGain = audioCtx.createGain();
+        oscsGain.gain.setValueAtTime(vol, time);
+        oscsGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
+        let filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass'; filter.frequency.value = cutoff; filter.Q.value = res;
+
+        ratios.forEach(ratio => {
+            let osc = audioCtx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.value = tone * ratio;
+            osc.connect(filter);
+            osc.start(time); osc.stop(time + decay);
+        });
+
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            filter.connect(drv).connect(oscsGain);
+        } else {
+            filter.connect(oscsGain);
+        }
+
+        routeAudio(oscsGain);
+    }
+
+    function playBass(time, p) {
+        const subFreq = Math.max(0.001, p[0].value); const mFreq = p[1].value; const mIdx = Math.max(0.001, p[2].value);
+        const decay = Math.max(0.01, p[3].value); const glide = Math.max(0.01, p[4].value); const driveAmt = p[5].value;
+
+        const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
+        // 808 Pitch Glide Effect
+        carrier.frequency.setValueAtTime(subFreq * 3, time);
+        carrier.frequency.exponentialRampToValueAtTime(subFreq, time + glide);
+
+        const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
+        const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
+
+        modGain.gain.setValueAtTime(mIdx * 3, time); modGain.gain.exponentialRampToValueAtTime(mIdx, time + decay);
+        modulator.connect(modGain); modGain.connect(carrier.frequency);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
+        if (driveAmt > 0) {
+            const drv = createDrive(driveAmt);
+            carrier.connect(drv).connect(gain);
+        } else {
+            carrier.connect(gain);
+        }
+
+        routeAudio(gain);
+        modulator.start(time); carrier.start(time);
+        modulator.stop(time + decay); carrier.stop(time + decay);
+    }
+
+    function playLead(time, p) {
+        const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value;
+        const decay = Math.max(0.01, p[3].value); let attack = p[4].value; const vol = Math.max(0.001, p[5].value);
+
+        if (attack >= decay) attack = decay - 0.01; // Защита от перекрытия времени
+
+        const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
+        const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
+
+        const modGain = audioCtx.createGain(); modGain.gain.value = mIdx;
+        modulator.connect(modGain); modGain.connect(carrier.frequency);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.001, time);
+        gain.gain.linearRampToValueAtTime(vol, time + attack);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
+        carrier.connect(gain); routeAudio(gain);
+
+        modulator.start(time); carrier.start(time);
+        modulator.stop(time + decay); carrier.stop(time + decay);
+    }
+
+    const soundEngines = [playKick, playSnare, playHiHat, playBass, playLead];
+
+    // --- VU METER ЛОГИКА ---
+    function updateVUMeter() {
+        if (!isPlaying || !analyser) return;
+        analyser.getByteTimeDomainData(vuDataArray);
+        let max = 0;
+        for (let i = 0; i < vuDataArray.length; i++) {
+            let val = (vuDataArray[i] - 128) / 128;
+            if (val < 0) val = -val;
+            if (val > max) max = val;
+        }
+        // Normalize 0-1 to 0-100%
+        let percent = max * 100 * 2.5; // Boosted visualization slightly
+        if (percent > 100) percent = 100;
+
+        const vuEl = document.getElementById('vuMeter');
+        vuEl.style.height = percent + '%';
+        vuEl.style.background = percent > 90 ? '#ff0000' : (percent > 70 ? '#ffaa00' : 'var(--accent)');
+
+        requestAnimationFrame(updateVUMeter);
+    }
+
+    // --- ИНТЕРФЕЙС И ЛОГИКА ---
+
+    const daw = document.getElementById('daw');
+    synths.forEach((synth, trackIdx) => {
+        const trackDiv = document.createElement('div'); trackDiv.className = 'track';
+
+        // Панель управления синтезатором
+        const header = document.createElement('div'); header.className = 'track-header';
+        header.innerHTML = `<div class="track-title">${synth.name}</div>`;
+
+        const params = document.createElement('div'); params.className = 'track-params';
+
+        synth.params.forEach((param, pIdx) => {
+            const pDiv = document.createElement('div'); pDiv.className = 'knob-group';
+            pDiv.innerHTML = `<label>${param.name}</label><input type="range" min="${param.min}" max="${param.max}" step="${param.step}" value="${param.value}">`;
+            pDiv.querySelector('input').addEventListener('input', (e) => synths[trackIdx].params[pIdx].value = parseFloat(e.target.value));
+            params.appendChild(pDiv);
+        });
+
+        header.appendChild(params); trackDiv.appendChild(header);
+
+        // Сетка
+        const gridDiv = document.createElement('div'); gridDiv.className = 'sequencer-grid';
+        uiSteps[trackIdx] = [];
+        for (let i = 0; i < stepsCount; i++) {
+            const step = document.createElement('div'); step.className = 'step';
+            step.addEventListener('click', () => {
+                grid[trackIdx][i] = !grid[trackIdx][i]; step.classList.toggle('active');
+            });
+            gridDiv.appendChild(step); uiSteps[trackIdx].push(step);
+        }
+        trackDiv.appendChild(gridDiv); daw.appendChild(trackDiv);
+    });
+
+    // Дефолтный паттерн (Doom-like Industrial Groove)
+    [0, 4, 8, 10].forEach(i => { grid[0][i] = true; uiSteps[0][i].classList.add('active'); }); // Kick
+    [4, 12].forEach(i => { grid[1][i] = true; uiSteps[1][i].classList.add('active'); }); // Snare
+    [2, 6, 10, 14].forEach(i => { grid[2][i] = true; uiSteps[2][i].classList.add('active'); }); // Hat
+    [0, 3, 6, 9, 12, 14].forEach(i => { grid[3][i] = true; uiSteps[3][i].classList.add('active'); }); // Bass
+    [0, 7, 12].forEach(i => { grid[4][i] = true; uiSteps[4][i].classList.add('active'); }); // Lead
+
+    // Глобальные контроллы
+    let isPlaying = false, currentStep = 0, nextNoteTime = 0.0, bpm = 120, timerID;
+
+    // --- SAVE / LOAD STATE ---
+    function saveState() {
+        const state = {
+            bpm: bpm,
+            theme: document.getElementById('themeSelect').value,
+            distMix: document.getElementById('distMix').value,
+            delayMix: document.getElementById('delayMix').value,
+            reverbMix: document.getElementById('reverbMix').value,
+            masterVol: document.getElementById('masterVol').value,
+            grid: grid,
+            synthsParams: synths.map(s => s.params.map(p => p.value))
+        };
+        localStorage.setItem('mathDawState', JSON.stringify(state));
+        alert('Pattern & Synths Saved!');
+    }
+
+    function loadState() {
+        const saved = localStorage.getItem('mathDawState');
+        if (!saved) return alert('No saved state found!');
+        const state = JSON.parse(saved);
+
+        // Restore Globals
+        bpm = state.bpm; document.getElementById('bpm').value = bpm; document.getElementById('bpmVal').innerText = bpm;
+        if (audioCtx && delayNode) delayNode.delayTime.value = (60 / bpm) * 0.75;
+
+        document.getElementById('themeSelect').value = state.theme;
+        document.documentElement.setAttribute('data-theme', state.theme);
+
+        document.getElementById('distMix').value = state.distMix; if(audioCtx && distortionNode) distortionNode.curve = makeDistortionCurve(parseInt(state.distMix));
+        document.getElementById('delayMix').value = state.delayMix; if(audioCtx && delayMix) delayMix.gain.value = state.delayMix / 100;
+        document.getElementById('reverbMix').value = state.reverbMix; if(audioCtx && reverbMix) reverbMix.gain.value = state.reverbMix / 100;
+        document.getElementById('masterVol').value = state.masterVol; if(audioCtx && masterGain) masterGain.gain.value = state.masterVol / 100;
+
+        // Restore Grid
+        for (let t = 0; t < synths.length; t++) {
+            grid[t] = [...state.grid[t]];
+            for (let s = 0; s < stepsCount; s++) {
+                if (grid[t][s]) uiSteps[t][s].classList.add('active');
+                else uiSteps[t][s].classList.remove('active');
+            }
+        }
+
+        // Restore Synths
+        if (state.synthsParams) {
+            const trackDivs = document.querySelectorAll('.track');
+            for (let t = 0; t < synths.length; t++) {
+                const inputs = trackDivs[t].querySelectorAll('input[type="range"]');
+                for (let pIdx = 0; pIdx < synths[t].params.length; pIdx++) {
+                    const val = state.synthsParams[t][pIdx];
+                    synths[t].params[pIdx].value = val;
+                    if (inputs[pIdx]) inputs[pIdx].value = val;
+                }
+            }
+        }
+        alert('Loaded successfully!');
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', saveState);
+    document.getElementById('loadBtn').addEventListener('click', loadState);
+
+    document.getElementById('themeSelect').addEventListener('change', (e) => {
+        document.documentElement.setAttribute('data-theme', e.target.value);
+    });
+
+    document.getElementById('bpm').addEventListener('input', (e) => {
+        bpm = e.target.value; document.getElementById('bpmVal').innerText = bpm;
+        if (audioCtx && delayNode) delayNode.delayTime.value = (60 / bpm) * 0.75; // Синхронизация дилея (Dotted 8th)
+    });
+
+    document.getElementById('distMix').addEventListener('input', (e) => { if(audioCtx) distortionNode.curve = makeDistortionCurve(parseInt(e.target.value)); });
+    document.getElementById('delayMix').addEventListener('input', (e) => { if(audioCtx) delayMix.gain.value = e.target.value / 100; });
+    document.getElementById('reverbMix').addEventListener('input', (e) => { if(audioCtx) reverbMix.gain.value = e.target.value / 100; });
+    document.getElementById('masterVol').addEventListener('input', (e) => { if(audioCtx) masterGain.gain.value = e.target.value / 100; });
+
+    function scheduleNote(stepNumber, time) {
+        for (let t = 0; t < synths.length; t++) {
+            if (grid[t][stepNumber]) soundEngines[t](time, synths[t].params);
+        }
+        requestAnimationFrame(() => {
+            for (let t = 0; t < synths.length; t++) {
+                uiSteps[t].forEach(s => s.classList.remove('playing'));
+                uiSteps[t][stepNumber].classList.add('playing');
+            }
+        });
+    }
+
+    function scheduler() {
+        while (nextNoteTime < audioCtx.currentTime + 0.1) {
+            scheduleNote(currentStep, nextNoteTime);
+            nextNoteTime += 0.25 * (60.0 / bpm);
+            currentStep = (currentStep + 1) % stepsCount;
+        }
+        timerID = setTimeout(scheduler, 25.0);
+    }
+
+    document.getElementById('playBtn').addEventListener('click', () => {
+        initAudio();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            currentStep = 0; nextNoteTime = audioCtx.currentTime + 0.05; scheduler();
+            document.getElementById('playBtn').innerText = '⏸ STOP';
+            updateVUMeter();
+        } else {
+            clearTimeout(timerID);
+            for (let t = 0; t < synths.length; t++) uiSteps[t].forEach(s => s.classList.remove('playing'));
+            document.getElementById('playBtn').innerText = '▶ PLAY';
+            document.getElementById('vuMeter').style.height = '0%';
+        }
+    });
+</script>
+</body>
+</html>
