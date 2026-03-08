@@ -100,6 +100,12 @@
         .step.playing { border: 2px solid white; background-color: var(--grid-active); box-shadow: 0 0 15px white; }
 
         .fx-section { display: flex; gap: 15px; border-left: 1px solid #555; padding-left: 15px; margin-left: 15px; flex-wrap: wrap; }
+
+        .vu-meter-container {
+            width: 15px; height: 60px; background: #111; border: 1px solid #333; border-radius: 4px;
+            display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; margin-left: 10px;
+        }
+        .vu-meter-level { width: 100%; height: 0%; background: var(--accent); transition: height 0.05s ease-out; }
     </style>
 </head>
 <body>
@@ -108,6 +114,10 @@
         <h1>Math DAW</h1>
         <div class="master-controls">
             <button class="play-btn" id="playBtn">▶ PLAY / STOP</button>
+            <div class="file-ops">
+                <button id="saveBtn" class="sm-btn">SAVE</button>
+                <button id="loadBtn" class="sm-btn">LOAD</button>
+            </div>
             <div class="knob-group">
                 <label>BPM: <span id="bpmVal">120</span></label>
                 <input type="range" id="bpm" min="60" max="200" value="120">
@@ -138,6 +148,9 @@
                     <option value="dark">Pro Dark</option>
                 </select>
             </div>
+            <div class="vu-meter-container">
+                <div class="vu-meter-level" id="vuMeter"></div>
+            </div>
         </div>
     </div>
 
@@ -145,7 +158,8 @@
 
 <script>
     let audioCtx;
-    let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix, distortionNode;
+    let masterGain, delayNode, feedbackGain, reverbNode, delayMix, reverbMix, distortionNode, analyser;
+    let vuDataArray;
 
     // Параметры синтеза для каждого инструмента (до Ableton еще идти, но 6 параметров — это уже заявка на мощь)
     const synths = [
@@ -239,7 +253,14 @@
         distortionNode.oversample = '4x';
 
         distortionNode.connect(masterGain);
-        masterGain.connect(audioCtx.destination);
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        masterGain.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        vuDataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        updateVUMeter();
 
         // Математический Reverb (Генерация Impulse Response)
         let len = audioCtx.sampleRate * 2.5; // 2.5 секунды
@@ -283,16 +304,22 @@
 
     // --- АЛГОРИТМЫ СИНТЕЗА ---
 
+    const curveCache = {};
+    function getCachedDistortionCurve(amount) {
+        if (!curveCache[amount]) curveCache[amount] = makeDistortionCurve(amount);
+        return curveCache[amount];
+    }
+
     function createDrive(amount) {
         const shaper = audioCtx.createWaveShaper();
-        shaper.curve = makeDistortionCurve(amount);
+        shaper.curve = getCachedDistortionCurve(amount);
         shaper.oversample = '4x';
         return shaper;
     }
 
     function playKick(time, p) {
-        const pitch = p[0].value; const decay = p[1].value; const sweep = p[2].value; const click = p[3].value;
-        const driveAmt = p[4].value; const vol = p[5].value;
+        const pitch = Math.max(0.001, p[0].value); const decay = Math.max(0.01, p[1].value); const sweep = p[2].value;
+        const click = p[3].value; const driveAmt = p[4].value; const vol = Math.max(0.001, p[5].value);
 
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
@@ -306,7 +333,7 @@
             clickOsc.frequency.setValueAtTime(3000, time);
             clickOsc.frequency.exponentialRampToValueAtTime(0.01, time + 0.02);
             const clickGain = audioCtx.createGain();
-            clickGain.gain.setValueAtTime(click * vol, time);
+            clickGain.gain.setValueAtTime(Math.max(0.001, click * vol), time);
             clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
             clickOsc.connect(clickGain); routeAudio(clickGain);
             clickOsc.start(time); clickOsc.stop(time + 0.02);
@@ -327,8 +354,8 @@
     }
 
     function playSnare(time, p) {
-        const tone = p[0].value; const decay = p[1].value; const noiseVol = p[2].value; const hpf = p[3].value;
-        const snap = p[4].value; const vol = p[5].value;
+        const tone = Math.max(0.001, p[0].value); const decay = Math.max(0.01, p[1].value); const noiseVol = p[2].value;
+        const hpf = p[3].value; const snap = p[4].value; const vol = Math.max(0.001, p[5].value);
 
         const osc = audioCtx.createOscillator();
         const oscGain = audioCtx.createGain();
@@ -337,8 +364,8 @@
 
         // Snap (быстрое падение тона в начале для щелчка)
         osc.frequency.exponentialRampToValueAtTime(tone / 2, time + 0.05);
-        oscGain.gain.setValueAtTime(0.8 * vol * snap, time);
-        oscGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        oscGain.gain.setValueAtTime(Math.max(0.001, 0.8 * vol * snap), time);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
         osc.connect(oscGain); routeAudio(oscGain);
         osc.start(time); osc.stop(time + decay);
 
@@ -352,21 +379,21 @@
         const noiseFilter = audioCtx.createBiquadFilter();
         noiseFilter.type = 'highpass'; noiseFilter.frequency.value = hpf;
         const noiseGain = audioCtx.createGain();
-        noiseGain.gain.setValueAtTime(noiseVol * vol, time);
-        noiseGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        noiseGain.gain.setValueAtTime(Math.max(0.001, noiseVol * vol), time);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
         noise.connect(noiseFilter).connect(noiseGain); routeAudio(noiseGain);
         noise.start(time);
     }
 
     function playHiHat(time, p) {
-        const cutoff = p[0].value; const decay = p[1].value; const res = p[2].value;
-        const tone = p[3].value; const driveAmt = p[4].value; const vol = p[5].value;
+        const cutoff = p[0].value; const decay = Math.max(0.01, p[1].value); const res = p[2].value;
+        const tone = p[3].value; const driveAmt = p[4].value; const vol = Math.max(0.001, p[5].value);
 
         // Металлический тон вместо простого шума (группа осцилляторов)
         const ratios = [1, 1.34, 1.89, 2.4, 3.1];
         const oscsGain = audioCtx.createGain();
         oscsGain.gain.setValueAtTime(vol, time);
-        oscsGain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        oscsGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
         let filter = audioCtx.createBiquadFilter();
         filter.type = 'bandpass'; filter.frequency.value = cutoff; filter.Q.value = res;
@@ -390,8 +417,8 @@
     }
 
     function playBass(time, p) {
-        const subFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value;
-        const decay = p[3].value; const glide = p[4].value; const driveAmt = p[5].value;
+        const subFreq = Math.max(0.001, p[0].value); const mFreq = p[1].value; const mIdx = Math.max(0.001, p[2].value);
+        const decay = Math.max(0.01, p[3].value); const glide = Math.max(0.01, p[4].value); const driveAmt = p[5].value;
 
         const carrier = audioCtx.createOscillator(); carrier.type = 'sine';
         // 808 Pitch Glide Effect
@@ -405,7 +432,7 @@
         modulator.connect(modGain); modGain.connect(carrier.frequency);
 
         const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
+        gain.gain.setValueAtTime(0.8, time); gain.gain.exponentialRampToValueAtTime(0.001, time + decay);
 
         if (driveAmt > 0) {
             const drv = createDrive(driveAmt);
@@ -421,7 +448,9 @@
 
     function playLead(time, p) {
         const cFreq = p[0].value; const mFreq = p[1].value; const mIdx = p[2].value;
-        const decay = p[3].value; const attack = p[4].value; const vol = p[5].value;
+        const decay = Math.max(0.01, p[3].value); let attack = p[4].value; const vol = Math.max(0.001, p[5].value);
+
+        if (attack >= decay) attack = decay - 0.01; // Защита от перекрытия времени
 
         const carrier = audioCtx.createOscillator(); carrier.type = 'sine'; carrier.frequency.value = cFreq;
         const modulator = audioCtx.createOscillator(); modulator.type = 'sine'; modulator.frequency.value = mFreq;
@@ -441,6 +470,27 @@
     }
 
     const soundEngines = [playKick, playSnare, playHiHat, playBass, playLead];
+
+    // --- VU METER ЛОГИКА ---
+    function updateVUMeter() {
+        if (!isPlaying || !analyser) return;
+        analyser.getByteTimeDomainData(vuDataArray);
+        let max = 0;
+        for (let i = 0; i < vuDataArray.length; i++) {
+            let val = (vuDataArray[i] - 128) / 128;
+            if (val < 0) val = -val;
+            if (val > max) max = val;
+        }
+        // Normalize 0-1 to 0-100%
+        let percent = max * 100 * 2.5; // Boosted visualization slightly
+        if (percent > 100) percent = 100;
+
+        const vuEl = document.getElementById('vuMeter');
+        vuEl.style.height = percent + '%';
+        vuEl.style.background = percent > 90 ? '#ff0000' : (percent > 70 ? '#ffaa00' : 'var(--accent)');
+
+        requestAnimationFrame(updateVUMeter);
+    }
 
     // --- ИНТЕРФЕЙС И ЛОГИКА ---
 
@@ -486,6 +536,66 @@
     // Глобальные контроллы
     let isPlaying = false, currentStep = 0, nextNoteTime = 0.0, bpm = 120, timerID;
 
+    // --- SAVE / LOAD STATE ---
+    function saveState() {
+        const state = {
+            bpm: bpm,
+            theme: document.getElementById('themeSelect').value,
+            distMix: document.getElementById('distMix').value,
+            delayMix: document.getElementById('delayMix').value,
+            reverbMix: document.getElementById('reverbMix').value,
+            masterVol: document.getElementById('masterVol').value,
+            grid: grid,
+            synthsParams: synths.map(s => s.params.map(p => p.value))
+        };
+        localStorage.setItem('mathDawState', JSON.stringify(state));
+        alert('Pattern & Synths Saved!');
+    }
+
+    function loadState() {
+        const saved = localStorage.getItem('mathDawState');
+        if (!saved) return alert('No saved state found!');
+        const state = JSON.parse(saved);
+
+        // Restore Globals
+        bpm = state.bpm; document.getElementById('bpm').value = bpm; document.getElementById('bpmVal').innerText = bpm;
+        if (audioCtx && delayNode) delayNode.delayTime.value = (60 / bpm) * 0.75;
+
+        document.getElementById('themeSelect').value = state.theme;
+        document.documentElement.setAttribute('data-theme', state.theme);
+
+        document.getElementById('distMix').value = state.distMix; if(audioCtx && distortionNode) distortionNode.curve = makeDistortionCurve(parseInt(state.distMix));
+        document.getElementById('delayMix').value = state.delayMix; if(audioCtx && delayMix) delayMix.gain.value = state.delayMix / 100;
+        document.getElementById('reverbMix').value = state.reverbMix; if(audioCtx && reverbMix) reverbMix.gain.value = state.reverbMix / 100;
+        document.getElementById('masterVol').value = state.masterVol; if(audioCtx && masterGain) masterGain.gain.value = state.masterVol / 100;
+
+        // Restore Grid
+        for (let t = 0; t < synths.length; t++) {
+            grid[t] = [...state.grid[t]];
+            for (let s = 0; s < stepsCount; s++) {
+                if (grid[t][s]) uiSteps[t][s].classList.add('active');
+                else uiSteps[t][s].classList.remove('active');
+            }
+        }
+
+        // Restore Synths
+        if (state.synthsParams) {
+            const trackDivs = document.querySelectorAll('.track');
+            for (let t = 0; t < synths.length; t++) {
+                const inputs = trackDivs[t].querySelectorAll('input[type="range"]');
+                for (let pIdx = 0; pIdx < synths[t].params.length; pIdx++) {
+                    const val = state.synthsParams[t][pIdx];
+                    synths[t].params[pIdx].value = val;
+                    if (inputs[pIdx]) inputs[pIdx].value = val;
+                }
+            }
+        }
+        alert('Loaded successfully!');
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', saveState);
+    document.getElementById('loadBtn').addEventListener('click', loadState);
+
     document.getElementById('themeSelect').addEventListener('change', (e) => {
         document.documentElement.setAttribute('data-theme', e.target.value);
     });
@@ -528,10 +638,12 @@
         if (isPlaying) {
             currentStep = 0; nextNoteTime = audioCtx.currentTime + 0.05; scheduler();
             document.getElementById('playBtn').innerText = '⏸ STOP';
+            updateVUMeter();
         } else {
             clearTimeout(timerID);
             for (let t = 0; t < synths.length; t++) uiSteps[t].forEach(s => s.classList.remove('playing'));
             document.getElementById('playBtn').innerText = '▶ PLAY';
+            document.getElementById('vuMeter').style.height = '0%';
         }
     });
 </script>
